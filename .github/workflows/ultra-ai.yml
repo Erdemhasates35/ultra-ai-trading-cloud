@@ -1,53 +1,68 @@
-name: 🚀 Ultra AI Trading System
+name: Ultra AI Trading System — fail-closed execution gate
+
 on:
-  schedule:
-    - cron: '*/15 * * * *'  # Her 15 dakikada bir
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [main]
+    paths:
+      - ".github/workflows/ultra-ai.yml"
+      - "ultra_cloud_system.py"
+      - "requirements.txt"
+
+permissions:
+  contents: read
 
 jobs:
   ultra-ai-trading:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    
     steps:
-    - uses: actions/checkout@v4
-    
-    - uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-        
-    - name: Install Ultra Dependencies
-      run: |
-        pip install --upgrade pip
-        pip install ccxt pandas numpy requests asyncio
-        pip install scikit-learn xgboost lightgbm
-        
-    - name: 🚀 Run Ultra AI System
-      env:
-        BINANCE_API: lwshkUEXFilqThFGXiz45dMtYyuJd7EF8YgwfWysRtG9ZRFqjkMGrilPE6LYuknn
-        BINANCE_SECRET: 7ULy4XjeNRGapdo1qt3UtHg1gDx8p15OoE2CShqPGzU81VZaAMUXUz0qefXFFA4M
-        BITGET_API: bg_cd0c64a9a5962c8188c576bb2633a84a
-        BITGET_SECRET: 6bf2fa7dc84bf386f2ed2466cbd3eca6a57f89786685d5778a80a19da56892c7
-        BITGET_PASS: Arelim3536
-      run: |
-        echo "🚀 Ultra AI Starting - Erdemhasates35"
-        echo "🕐 UTC Time: $(date -u)"
-        echo "💎 Target: $20 → ∞"
-        python ultra_cloud_system.py
-        
-    - name: 📊 Upload Results
-      uses: actions/upload-artifact@v3
-      with:
-        name: ultra-ai-results-${{ github.run_number }}
-        path: |
-          *.json
-          *.log
-        retention-days: 90
-        
-    - name: 📱 Notify Success
-      run: |
-        echo "✅ Ultra AI Session Completed!"
-        echo "📊 Results uploaded to Artifacts"
-        echo "🔄 Next run in 15 minutes"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Require reviewed execution source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f ultra_cloud_system.py ]]; then
+            echo "::error::Execution disabled: ultra_cloud_system.py is absent from this repository."
+            exit 1
+          fi
+          if [[ ! -f requirements.txt ]]; then
+            echo "::error::Execution disabled: requirements.txt is absent; dependencies are not pinned."
+            exit 1
+          fi
+
+      - name: Require rotated credentials in GitHub Secrets
+        shell: bash
+        env:
+          BINANCE_API: ${{ secrets.BINANCE_API }}
+          BINANCE_SECRET: ${{ secrets.BINANCE_SECRET }}
+          BITGET_API: ${{ secrets.BITGET_API }}
+          BITGET_SECRET: ${{ secrets.BITGET_SECRET }}
+          BITGET_PASS: ${{ secrets.BITGET_PASS }}
+        run: |
+          set -euo pipefail
+          for name in BINANCE_API BINANCE_SECRET BITGET_API BITGET_SECRET BITGET_PASS; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing required GitHub Secret: $name"
+              exit 1
+            fi
+          done
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pinned project dependencies
+        run: python -m pip install --requirement requirements.txt
+
+      - name: Execute reviewed trading entrypoint
+        env:
+          BINANCE_API: ${{ secrets.BINANCE_API }}
+          BINANCE_SECRET: ${{ secrets.BINANCE_SECRET }}
+          BITGET_API: ${{ secrets.BITGET_API }}
+          BITGET_SECRET: ${{ secrets.BITGET_SECRET }}
+          BITGET_PASS: ${{ secrets.BITGET_PASS }}
+        run: python ultra_cloud_system.py
